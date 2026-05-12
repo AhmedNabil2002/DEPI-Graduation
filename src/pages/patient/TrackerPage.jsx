@@ -1,15 +1,20 @@
-// ── Tracker page — wraps the existing tracker logic ──────────
-// Imports all hooks and components from the previous v5 build
-// and renders them inside a full-screen layout with a back button.
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
 import { HiArrowLeft } from 'react-icons/hi';
 import { EXERCISES_BY_INJURY } from '../../data/mockData';
+import {
+  setExerciseIndex,
+  setSide,
+  setTargetReps,
+  setTracking,
+  setRunning,
+  addRep,
+  resetSession,
+  resetReps,
+} from '../../store/trackerSlice';
 
-// ── Shared tracker components (inline, self-contained) ────────
-
-// MediaPipe landmark indices
+// ── MediaPipe landmark indices ────────────────────────────────
 const LM = {
   left_shoulder:11, right_shoulder:12, left_elbow:13, right_elbow:14,
   left_wrist:15, right_wrist:16, left_hip:23, right_hip:24,
@@ -29,7 +34,7 @@ function vecAngle(a,b,c){
   return Math.round(Math.acos(Math.min(1,Math.max(-1,dot/mag)))*(180/Math.PI));
 }
 
-function computeAngle(lm, type, side){
+function computeAngle(lm,type,side){
   const s=side;
   if(type==='shoulder'){
     const h=lm[LM[`${s}_hip`]],sh=lm[LM[`${s}_shoulder`]],el=lm[LM[`${s}_elbow`]];
@@ -85,90 +90,141 @@ function useTimer(running){
 // ── Main TrackerPage ──────────────────────────────────────────
 export default function TrackerPage(){
   const navigate = useNavigate();
-  const videoRef = useRef(null), canvasRef = useRef(null);
+  const dispatch = useDispatch();
 
-  const [injury]   = useState('shoulder');
-  const exercises  = EXERCISES_BY_INJURY[injury] || [];
-  const [exIdx, setExIdx]       = useState(0);
-  const ex = exercises[exIdx] || exercises[0];
+  // Redux state
+  const {
+    exerciseIndex, side, targetReps, reps, log, isTracking, isRunning,
+  } = useSelector(state => state.tracker);
+  const onboardingInjury = useSelector(state => state.onboarding.injury);
 
-  const [side, setSide]         = useState('left');
-  const [targetReps, setTargetReps] = useState(10);
-  const [tracking, setTracking] = useState(false);
-  const [running, setRunning]   = useState(false);
-  const [angle, setAngle]       = useState(null);
-  const [reps, setReps]         = useState(0);
-  const [log, setLog]           = useState([]);
+  const injury    = onboardingInjury || 'shoulder';
+  const exercises = EXERCISES_BY_INJURY[injury] || EXERCISES_BY_INJURY['shoulder'];
+  const ex        = exercises[exerciseIndex] || exercises[0];
+
+  // Local state — only for camera/display (too high-frequency for Redux)
+  const [angle,       setAngle]       = useState(null);
   const [celebrating, setCelebrating] = useState(false);
 
-  const runRef=useRef(false), sideRef=useRef('left'), exRef=useRef(ex), tRepsRef=useRef(10);
-  const repsRef=useRef(0), isUpRef=useRef(false), peakRef=useRef(0);
-  const poseRef=useRef(null), camRef=useRef(null);
+  // Refs for synchronous access inside camera callbacks
+  const videoRef = useRef(null), canvasRef = useRef(null);
+  const runRef   = useRef(false);
+  const sideRef  = useRef(side);
+  const exRef    = useRef(ex);
+  const tRepsRef = useRef(targetReps);
+  const repsRef  = useRef(reps);
+  const isUpRef  = useRef(false);
+  const peakRef  = useRef(0);
+  const poseRef  = useRef(null);
+  const camRef   = useRef(null);
 
-  useEffect(()=>{runRef.current=running;},[running]);
-  useEffect(()=>{sideRef.current=side;},[side]);
-  useEffect(()=>{exRef.current=ex;},[ex]);
-  useEffect(()=>{tRepsRef.current=targetReps;},[targetReps]);
+  // Keep refs in sync with Redux state
+  useEffect(() => { runRef.current   = isRunning;   }, [isRunning]);
+  useEffect(() => { sideRef.current  = side;         }, [side]);
+  useEffect(() => { exRef.current    = ex;           }, [ex]);
+  useEffect(() => { tRepsRef.current = targetReps;   }, [targetReps]);
+  useEffect(() => { repsRef.current  = reps;         }, [reps]);
 
-  const {display:timer, reset:resetTimer} = useTimer(running);
+  const {display:timer, reset:resetTimer} = useTimer(isRunning);
 
-  const onFrame=useCallback(a=>{
-    if(!runRef.current||a===null){setAngle(null);return;}
+  const onFrame = useCallback(a => {
+    if(!runRef.current || a === null) { setAngle(null); return; }
     setAngle(a);
-    const ex=exRef.current;
-    if(a>peakRef.current)peakRef.current=a;
-    if(!isUpRef.current&&a>=ex.upThresh){isUpRef.current=true;peakRef.current=a;}
-    if(isUpRef.current&&a<=ex.downThresh){
-      isUpRef.current=false;
-      const peak=peakRef.current; peakRef.current=0;
+    const cur = exRef.current;
+    if(a > peakRef.current) peakRef.current = a;
+    if(!isUpRef.current && a >= cur.upThresh){ isUpRef.current = true; peakRef.current = a; }
+    if(isUpRef.current && a <= cur.downThresh){
+      isUpRef.current = false;
+      const peak = peakRef.current; peakRef.current = 0;
       repsRef.current++;
-      setReps(repsRef.current);
-      const time=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-      setLog(p=>[...p,{repNum:repsRef.current,ex:exRef.current,side:sideRef.current,peakAngle:peak,time}]);
-      if(repsRef.current>=tRepsRef.current){
+      const time = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      dispatch(addRep({ exKey:cur.key, exNameEn:cur.nameEn, side:sideRef.current, peakAngle:peak, time }));
+      if(repsRef.current >= tRepsRef.current){
         setCelebrating(true);
-        setTimeout(()=>{setCelebrating(false);runRef.current=false;setRunning(false);},3000);
+        setTimeout(() => {
+          setCelebrating(false);
+          runRef.current = false;
+          dispatch(setRunning(false));
+        }, 3000);
       }
     }
-  },[]);
+  }, [dispatch]);
 
   async function startCam(){
-    if(!window.Pose||!window.Camera)return false;
-    const pose=new window.Pose({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`});
+    if(!window.Pose || !window.Camera) return false;
+    const pose = new window.Pose({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`});
     pose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.5,minTrackingConfidence:.5});
-    pose.onResults(results=>{
-      const v=videoRef.current,c=canvasRef.current;
-      if(!c||!v)return;
-      c.width=v.videoWidth||640; c.height=v.videoHeight||480;
-      const ctx=c.getContext('2d');
-      ctx.clearRect(0,0,c.width,c.height);
-      if(!results.poseLandmarks){onFrame(null);return;}
-      const a=computeAngle(results.poseLandmarks,exRef.current.angle_type,sideRef.current);
-      drawScene(ctx,results.poseLandmarks,c.width,c.height,exRef.current,sideRef.current,a);
+    pose.onResults(results => {
+      const v = videoRef.current, c = canvasRef.current;
+      if(!c || !v) return;
+      c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, c.width, c.height);
+      if(!results.poseLandmarks){ onFrame(null); return; }
+      const a = computeAngle(results.poseLandmarks, exRef.current.angle_type, sideRef.current);
+      drawScene(ctx, results.poseLandmarks, c.width, c.height, exRef.current, sideRef.current, a);
       onFrame(a);
     });
-    poseRef.current=pose;
+    poseRef.current = pose;
     try{
-      const stream=await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720}});
-      videoRef.current.srcObject=stream; await videoRef.current.play();
-      const cam=new window.Camera(videoRef.current,{onFrame:async()=>{if(poseRef.current)await poseRef.current.send({image:videoRef.current});},width:1280,height:720});
-      cam.start(); camRef.current=cam; return true;
-    }catch(e){console.error(e);return false;}
+      const stream = await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720}});
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      const cam = new window.Camera(videoRef.current, {onFrame:async()=>{ if(poseRef.current) await poseRef.current.send({image:videoRef.current}); }, width:1280, height:720});
+      cam.start(); camRef.current = cam; return true;
+    } catch(e){ console.error(e); return false; }
   }
 
   async function handleStart(){
-    const ok=await startCam();
-    if(!ok)return alert('Allow camera access and try again');
-    setTracking(true);setRunning(true);runRef.current=true;resetTimer();
+    const ok = await startCam();
+    if(!ok) return alert('Allow camera access and try again');
+    dispatch(setTracking(true));
+    dispatch(setRunning(true));
+    runRef.current = true;
+    resetTimer();
   }
-  function handleToggle(){if(!tracking){handleStart();return;}const n=!running;setRunning(n);runRef.current=n;}
-  function handleReset(){repsRef.current=0;isUpRef.current=false;peakRef.current=0;setReps(0);setAngle(null);setLog([]);}
-  function handleStop(){camRef.current?.stop?.();if(videoRef.current?.srcObject)videoRef.current.srcObject.getTracks().forEach(t=>t.stop());setTracking(false);setRunning(false);runRef.current=false;handleReset();resetTimer();}
+
+  function handleToggle(){
+    if(!isTracking){ handleStart(); return; }
+    const next = !isRunning;
+    dispatch(setRunning(next));
+    runRef.current = next;
+  }
+
+  function handleReset(){
+    repsRef.current = 0;
+    isUpRef.current = false;
+    peakRef.current = 0;
+    setAngle(null);
+    dispatch(resetReps());
+  }
+
+  function handleStop(){
+    camRef.current?.stop?.();
+    if(videoRef.current?.srcObject)
+      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+    runRef.current = false;
+    dispatch(resetSession());
+    setAngle(null);
+    resetTimer();
+  }
+
+  function handleExerciseChange(i, e){
+    dispatch(setExerciseIndex(i));
+    exRef.current = e;
+    handleReset();
+  }
+
+  function handleSideChange(s){
+    dispatch(setSide(s));
+    sideRef.current = s;
+    handleReset();
+  }
 
   if(!ex) return null;
 
-  const reached=angle!==null&&angle>=ex.target*.9;
-  const angleColor=reached?'#10b981':angle>ex.target*.55?ex.color:'#d1d5db';
+  const reached    = angle !== null && angle >= ex.target * .9;
+  const angleColor = reached ? '#10b981' : angle > ex.target * .55 ? ex.color : '#d1d5db';
 
   return(
     <div style={{width:'100vw',height:'100vh',display:'grid',gridTemplateColumns:'1fr 360px',gridTemplateRows:'56px 1fr',background:'#fff',overflow:'hidden'}}>
@@ -191,7 +247,7 @@ export default function TrackerPage(){
 
       {/* Camera */}
       <div style={{position:'relative',background:'#0f172a',overflow:'hidden'}}>
-        {!tracking&&(
+        {!isTracking&&(
           <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,background:'var(--gray-50)'}}>
             <div style={{fontSize:64,opacity:.12}}>📷</div>
             <p style={{fontSize:16,color:'var(--gray-400)'}}>Press Start to enable camera</p>
@@ -200,12 +256,12 @@ export default function TrackerPage(){
             </button>
           </div>
         )}
-        <video ref={videoRef} playsInline autoPlay muted style={{width:'100%',height:'100%',objectFit:'cover',transform:'scaleX(-1)',display:tracking?'block':'none'}}/>
-        <canvas ref={canvasRef} style={{position:'absolute',inset:0,width:'100%',height:'100%',transform:'scaleX(-1)',display:tracking?'block':'none'}}/>
-        {tracking&&(
+        <video ref={videoRef} playsInline autoPlay muted style={{width:'100%',height:'100%',objectFit:'cover',transform:'scaleX(-1)',display:isTracking?'block':'none'}}/>
+        <canvas ref={canvasRef} style={{position:'absolute',inset:0,width:'100%',height:'100%',transform:'scaleX(-1)',display:isTracking?'block':'none'}}/>
+        {isTracking&&(
           <>
             <div style={{position:'absolute',top:14,left:'50%',transform:'translateX(-50%)',background:'rgba(255,255,255,.92)',backdropFilter:'blur(12px)',borderRadius:'var(--radius-full)',padding:'7px 20px',display:'flex',alignItems:'center',gap:10,fontSize:13,boxShadow:'var(--shadow-md)'}}>
-              <div style={{width:8,height:8,borderRadius:'50%',background:running?'#10b981':'#f59e0b'}}/>
+              <div style={{width:8,height:8,borderRadius:'50%',background:isRunning?'#10b981':'#f59e0b'}}/>
               {ex.nameEn} · {side==='left'?'Left':'Right'} · Target {ex.target}°
             </div>
             <div style={{position:'absolute',bottom:28,left:'50%',transform:'translateX(-50%)',textAlign:'center',pointerEvents:'none'}}>
@@ -232,7 +288,7 @@ export default function TrackerPage(){
           <div style={{fontSize:10,fontWeight:700,color:'var(--gray-400)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Exercise</div>
           <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
             {exercises.map((e,i)=>(
-              <button key={e.key} onClick={()=>{setExIdx(i);exRef.current=e;handleReset();}} style={{flex:'1 1 28%',padding:'10px 6px',background:exIdx===i?e.color:'#fff',color:exIdx===i?'#fff':'var(--gray-500)',border:`1.5px solid ${exIdx===i?e.color:'var(--gray-200)'}`,borderRadius:'var(--radius-md)',fontSize:11,fontWeight:700,cursor:'pointer',textAlign:'center',transition:'all .2s'}}>
+              <button key={e.key} onClick={()=>handleExerciseChange(i,e)} style={{flex:'1 1 28%',padding:'10px 6px',background:exerciseIndex===i?e.color:'#fff',color:exerciseIndex===i?'#fff':'var(--gray-500)',border:`1.5px solid ${exerciseIndex===i?e.color:'var(--gray-200)'}`,borderRadius:'var(--radius-md)',fontSize:11,fontWeight:700,cursor:'pointer',textAlign:'center',transition:'all .2s'}}>
                 <div style={{fontSize:16,marginBottom:3}}>{e.icon}</div>
                 <div>{e.nameEn}</div>
                 <div style={{fontSize:10,opacity:.75,marginTop:1}}>{e.target}°</div>
@@ -246,14 +302,14 @@ export default function TrackerPage(){
           <div style={{fontSize:10,fontWeight:700,color:'var(--gray-400)',letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Side</div>
           <div style={{display:'flex',gap:6}}>
             {[['left','◀ Left'],['right','Right ▶']].map(([s,lbl])=>(
-              <button key={s} onClick={()=>{setSide(s);sideRef.current=s;handleReset();}} style={{flex:1,padding:'9px',border:`1.5px solid ${side===s?'var(--gray-900)':'var(--gray-200)'}`,borderRadius:'var(--radius-md)',background:side===s?'var(--gray-900)':'#fff',color:side===s?'#fff':'var(--gray-600)',fontSize:13,fontWeight:700,cursor:'pointer'}}>{lbl}</button>
+              <button key={s} onClick={()=>handleSideChange(s)} style={{flex:1,padding:'9px',border:`1.5px solid ${side===s?'var(--gray-900)':'var(--gray-200)'}`,borderRadius:'var(--radius-md)',background:side===s?'var(--gray-900)':'#fff',color:side===s?'#fff':'var(--gray-600)',fontSize:13,fontWeight:700,cursor:'pointer'}}>{lbl}</button>
             ))}
           </div>
         </div>
 
         {/* Angle meter */}
         <div style={{background:'#fff',border:`2px solid ${reached?'#10b981':'var(--gray-100)'}`,borderRadius:'var(--radius-lg)',padding:'18px 20px',textAlign:'center',transition:'border-color .3s'}}>
-          <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:700,letterSpacing:2,marginBottom:8}}>SHOULDER ANGLE</div>
+          <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:700,letterSpacing:2,marginBottom:8}}>CURRENT ANGLE</div>
           <div style={{fontFamily:'monospace',fontSize:72,fontWeight:900,lineHeight:1,color:angleColor,transition:'color .3s'}}>{angle??'--'}<span style={{fontSize:28,fontWeight:400}}>°</span></div>
           <div style={{height:6,background:'var(--gray-100)',borderRadius:3,overflow:'hidden',margin:'12px 0 6px'}}>
             <div style={{height:'100%',width:`${Math.min(100,((angle??0)/ex.target)*100)}%`,background:reached?'#10b981':ex.color,borderRadius:3,transition:'width .3s'}}/>
@@ -276,7 +332,13 @@ export default function TrackerPage(){
           </div>
           <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}>
             <span style={{fontSize:11,color:'var(--gray-400)'}}>Target</span>
-            <input type="range" min="5" max="30" step="5" value={targetReps} onChange={e=>{setTargetReps(Number(e.target.value));tRepsRef.current=Number(e.target.value);}} style={{flex:1,accentColor:ex.color}}/>
+            <input type="range" min="5" max="30" step="5" value={targetReps}
+              onChange={e=>{
+                const v=Number(e.target.value);
+                dispatch(setTargetReps(v));
+                tRepsRef.current=v;
+              }}
+              style={{flex:1,accentColor:ex.color}}/>
             <span style={{fontSize:13,fontWeight:700,color:ex.color,minWidth:24}}>{targetReps}</span>
           </div>
         </div>
@@ -284,26 +346,26 @@ export default function TrackerPage(){
         {/* Controls */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
           <button onClick={handleToggle} style={{gridColumn:'1/-1',background:ex.color,color:'#fff',border:'none',borderRadius:'var(--radius-md)',padding:'13px',fontSize:15,fontWeight:700,cursor:'pointer',boxShadow:`0 4px 16px ${ex.color}44`}}>
-            {!tracking?'▶ Start Session':running?'⏸ Pause':'▶ Resume'}
+            {!isTracking?'▶ Start Session':isRunning?'⏸ Pause':'▶ Resume'}
           </button>
           <button onClick={handleReset} style={{background:'var(--gray-50)',color:'var(--gray-600)',border:'1px solid var(--gray-200)',borderRadius:'var(--radius-md)',padding:11,fontSize:13,fontWeight:600,cursor:'pointer'}}>🔄 Reset</button>
           <button onClick={handleStop}  style={{background:'#fff5f5',color:'var(--danger)',border:'1px solid #fecaca',borderRadius:'var(--radius-md)',padding:11,fontSize:13,fontWeight:600,cursor:'pointer'}}>⏹ Stop</button>
         </div>
 
-        {/* Log */}
+        {/* Movement log */}
         <div style={{background:'#fff',border:'1px solid var(--gray-100)',borderRadius:'var(--radius-lg)',overflow:'hidden',flex:1,minHeight:0}}>
           <div style={{padding:'10px 14px',borderBottom:'1px solid var(--gray-100)',fontSize:10,color:'var(--gray-400)',fontWeight:700,letterSpacing:2}}>MOVEMENT LOG</div>
           <div style={{overflowY:'auto',maxHeight:200,padding:'6px 0'}}>
             {log.length===0
               ? <div style={{padding:'20px 14px',textAlign:'center',color:'var(--gray-300)',fontSize:13}}>Start exercising to log movements</div>
-              : log.map((e,i)=>(
+              : log.map((entry,i)=>(
                 <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 14px',borderBottom:i<log.length-1?'1px solid var(--gray-50)':'none'}}>
-                  <div style={{width:26,height:26,borderRadius:'50%',background:e.ex.color+'18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:e.ex.color}}>{e.repNum}</div>
+                  <div style={{width:26,height:26,borderRadius:'50%',background:'#1a56db18',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#1a56db'}}>{entry.repNum}</div>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:12,fontWeight:600}}>{e.ex.nameEn}</div>
-                    <div style={{fontSize:11,color:'var(--gray-400)'}}>{e.time}</div>
+                    <div style={{fontSize:12,fontWeight:600}}>{entry.exNameEn}</div>
+                    <div style={{fontSize:11,color:'var(--gray-400)'}}>{entry.time}</div>
                   </div>
-                  <div style={{background:e.ex.color+'15',color:e.ex.color,borderRadius:'var(--radius-sm)',padding:'2px 8px',fontSize:12,fontWeight:700}}>↑ {e.peakAngle}°</div>
+                  <div style={{background:'#1a56db15',color:'#1a56db',borderRadius:'var(--radius-sm)',padding:'2px 8px',fontSize:12,fontWeight:700}}>↑ {entry.peakAngle}°</div>
                 </div>
               ))
             }
@@ -311,7 +373,7 @@ export default function TrackerPage(){
         </div>
       </div>
 
-      {/* MediaPipe */}
+      {/* MediaPipe CDN */}
       <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"/>
       <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"/>
     </div>

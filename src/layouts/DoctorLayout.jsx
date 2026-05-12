@@ -1,6 +1,7 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { HiViewGrid, HiUsers, HiChartBar, HiChatAlt2, HiCog, HiLogout } from 'react-icons/hi';
 import { HiOutlineLocationMarker } from 'react-icons/hi';
+import { useAuth } from '../context/AuthContext';
 
 const SIDEBAR_ITEMS = [
   { path: '/doctor/dashboard', icon: HiViewGrid,  label: 'Dashboard' },
@@ -11,8 +12,18 @@ const SIDEBAR_ITEMS = [
 ];
 
 export default function DoctorLayout() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate    = useNavigate();
+  const location    = useLocation();
+  const { user, logout } = useAuth();
+
+  function handleLogout() {
+    logout();
+    navigate('/', { replace: true });
+  }
+
+  const initials = user?.name
+    ? user.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+    : 'DR';
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--gray-50)' }}>
@@ -55,13 +66,13 @@ export default function DoctorLayout() {
         {/* Doctor info + logout */}
         <div style={{ padding:'16px 12px', borderTop:'1px solid rgba(255,255,255,.08)' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-            <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:13 }}>SA</div>
+            <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:13 }}>{initials}</div>
             <div>
-              <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>Dr. Sarah Ahmed</div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{user?.name || 'Doctor'}</div>
               <div style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>Physiotherapist</div>
             </div>
           </div>
-          <button onClick={() => navigate('/')} style={{
+          <button onClick={handleLogout} style={{
             display:'flex', alignItems:'center', gap:8, width:'100%',
             padding:'9px 14px', borderRadius:'var(--radius-md)',
             border:'none', background:'transparent',
@@ -92,7 +103,7 @@ export default function DoctorLayout() {
             <button style={{ background:'none', border:'none', cursor:'pointer', position:'relative' }}>
               <HiChatAlt2 size={20} color="var(--gray-500)" />
             </button>
-            <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:13 }}>SA</div>
+            <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:13 }}>{initials}</div>
           </div>
         </div>
 

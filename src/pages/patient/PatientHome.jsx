@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { HiArrowRight, HiStar } from 'react-icons/hi';
 import { FiActivity, FiCalendar, FiMessageSquare } from 'react-icons/fi';
 import { EXERCISES_BY_INJURY } from '../../data/mockData';
@@ -17,16 +18,19 @@ const STATS = [
 ];
 
 export default function PatientHome() {
-  const navigate = useNavigate();
-  const exercises = EXERCISES_BY_INJURY['shoulder']?.slice(0,3) || [];
+  const navigate      = useNavigate();
+  const user          = useSelector(state => state.auth.user);
+  const injury        = useSelector(state => state.onboarding.injury) || 'shoulder';
+  const firstName     = user?.name?.split(' ')[0] || 'there';
+  const exercises     = EXERCISES_BY_INJURY[injury]?.slice(0, 3) || [];
 
   return (
     <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:20 }}>
       {/* Greeting */}
       <div style={{ background:'linear-gradient(135deg,var(--primary),#1e40af)', borderRadius:'var(--radius-xl)', padding:'24px 20px', color:'#fff' }}>
         <div style={{ fontSize:13, opacity:.8 }}>{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
-        <h2 style={{ fontSize:22, fontWeight:800, marginTop:6, marginBottom:4 }}>Welcome back, Ahmed! 👋</h2>
-        <p style={{ fontSize:14, opacity:.8, marginBottom:20 }}>Continue your shoulder recovery journey</p>
+        <h2 style={{ fontSize:22, fontWeight:800, marginTop:6, marginBottom:4 }}>Welcome back, {firstName}! 👋</h2>
+        <p style={{ fontSize:14, opacity:.8, marginBottom:20 }}>Continue your {injury} recovery journey</p>
         <Button variant="white" size="md" iconRight={<HiArrowRight/>} onClick={() => navigate('/patient/tracker')}>
           Start Session
         </Button>

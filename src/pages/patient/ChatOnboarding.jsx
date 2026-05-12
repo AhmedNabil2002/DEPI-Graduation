@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import { HiArrowRight } from 'react-icons/hi';
 import { HiOutlineLocationMarker } from 'react-icons/hi';
+import { setInjury, resetOnboarding } from '../../store/onboardingSlice';
 
 const KEYWORDS = {
   shoulder: ['shoulder','كتف','arm','ذراع','elbow','كوع','raise','رفع','rotator'],
@@ -38,6 +40,7 @@ function Dot({ delay }) {
 
 export default function ChatOnboarding() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [msgs,    setMsgs]    = useState([WELCOME]);
   const [input,   setInput]   = useState('');
   const [typing,  setTyping]  = useState(false);
@@ -53,6 +56,8 @@ export default function ChatOnboarding() {
     setTimeout(() => {
       setTyping(false);
       if (inj) {
+        dispatch(resetOnboarding());
+        dispatch(setInjury(inj));
         setMsgs(p => [...p, { role:'bot', text:`✅ Got it! I'll show you specialists for **${INJURY_NAMES[inj]}** injuries.\n\nNext, let's map your pain on a body diagram for a more accurate assessment.`, showQuick:false }]);
         setDone(true);
         setTimeout(() => navigate(`/patient/pain-map?injury=${inj}`), 2000);
@@ -80,6 +85,8 @@ export default function ChatOnboarding() {
     setTyping(true);
     setTimeout(() => {
       setTyping(false);
+      dispatch(resetOnboarding());
+      dispatch(setInjury(q.injury));
       setMsgs(p => [...p, { role:'bot', text:`✅ Got it! Showing specialists for **${q.label}** injuries.\n\nNext, let's map your exact pain location.`, showQuick:false }]);
       setDone(true);
       setTimeout(() => navigate(`/patient/pain-map?injury=${q.injury}`), 1800);

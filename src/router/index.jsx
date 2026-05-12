@@ -1,27 +1,13 @@
 /**
  * Router — All app routes
  *
- * PUBLIC  /           → Landing (PhysioHome landing page)
- *         /auth       → Role selector (patient vs doctor)
+ * PUBLIC  /           → Landing
+ *         /auth       → Role selector
+ *         /auth/login → Login  (?role=patient|doctor)
+ *         /auth/register → Register (?role=patient|doctor)
  *
- * PATIENT /patient/*  (PatientLayout — bottom navbar)
- *   /chat             → AI chat onboarding
- *   /pain-map         → Interactive body pain map
- *   /doctors          → Doctor recommendations
- *   /doctor/:id       → Doctor profile + booking
- *   /home             → Patient dashboard
- *   /profile          → Patient profile + history
- *   /messages         → Chat with doctor
- *   /alerts           → Notifications
- *   /tracker          → Full-screen exercise tracker (no navbar)
- *
- * DOCTOR  /doctor/*   (DoctorLayout — sidebar)
- *   /dashboard        → Overview + patient table
- *   /patients         → Full patient list
- *   /patient/:id      → Patient detail + notes
- *   /messages         → Doctor ↔ patient chat
- *   /analytics        → Charts + stats
- *   /settings         → Profile settings
+ * PATIENT /patient/*  (protected — role: patient)
+ * DOCTOR  /doctor/*   (protected — role: doctor)
  */
 
 import { Routes, Route, Navigate } from 'react-router-dom';
@@ -31,28 +17,33 @@ import PublicLayout  from '../layouts/PublicLayout';
 import PatientLayout from '../layouts/PatientLayout';
 import DoctorLayout  from '../layouts/DoctorLayout';
 
-// Public
-import Landing    from '../pages/Landing';
+// Auth
 import AuthSelect from '../pages/AuthSelect';
+import Login      from '../pages/auth/Login';
+import Register   from '../pages/auth/Register';
+import ProtectedRoute from './ProtectedRoute';
+
+// Public
+import Landing from '../pages/Landing';
 
 // Patient
-import ChatOnboarding   from '../pages/patient/ChatOnboarding';
-import PainMap          from '../pages/patient/PainMap';
-import DoctorRecommend  from '../pages/patient/DoctorRecommend';
+import ChatOnboarding    from '../pages/patient/ChatOnboarding';
+import PainMap           from '../pages/patient/PainMap';
+import DoctorRecommend   from '../pages/patient/DoctorRecommend';
 import DoctorProfilePage from '../pages/patient/DoctorProfilePage';
-import PatientHome      from '../pages/patient/PatientHome';
-import PatientProfile   from '../pages/patient/PatientProfile';
-import MessagesPage     from '../pages/patient/MessagesPage';
-import AlertsPage       from '../pages/patient/AlertsPage';
-import TrackerPage      from '../pages/patient/TrackerPage';
+import PatientHome       from '../pages/patient/PatientHome';
+import PatientProfile    from '../pages/patient/PatientProfile';
+import MessagesPage      from '../pages/patient/MessagesPage';
+import AlertsPage        from '../pages/patient/AlertsPage';
+import TrackerPage       from '../pages/patient/TrackerPage';
 
 // Doctor
-import DoctorDashboard  from '../pages/doctor/DoctorDashboard';
-import PatientsList     from '../pages/doctor/PatientsList';
-import PatientDetail    from '../pages/doctor/PatientDetail';
-import DoctorMessages   from '../pages/doctor/DoctorMessages';
-import DoctorAnalytics  from '../pages/doctor/DoctorAnalytics';
-import DoctorSettings   from '../pages/doctor/DoctorSettings';
+import DoctorDashboard from '../pages/doctor/DoctorDashboard';
+import PatientsList    from '../pages/doctor/PatientsList';
+import PatientDetail   from '../pages/doctor/PatientDetail';
+import DoctorMessages  from '../pages/doctor/DoctorMessages';
+import DoctorAnalytics from '../pages/doctor/DoctorAnalytics';
+import DoctorSettings  from '../pages/doctor/DoctorSettings';
 
 export default function AppRouter() {
   return (
@@ -61,11 +52,22 @@ export default function AppRouter() {
       <Route element={<PublicLayout />}>
         <Route index element={<Landing />} />
       </Route>
-      <Route path="/auth" element={<AuthSelect />} />
 
-      {/* ── Patient ── */}
-      <Route path="/patient" element={<PatientLayout />}>
-        <Route index element={<Navigate to="/patient/chat" replace />} />
+      {/* ── Auth ── */}
+      <Route path="/auth"          element={<AuthSelect />} />
+      <Route path="/auth/login"    element={<Login />} />
+      <Route path="/auth/register" element={<Register />} />
+
+      {/* ── Patient (protected) ── */}
+      <Route
+        path="/patient"
+        element={
+          <ProtectedRoute role="patient">
+            <PatientLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="/patient/home" replace />} />
         <Route path="chat"       element={<ChatOnboarding />} />
         <Route path="pain-map"   element={<PainMap />} />
         <Route path="doctors"    element={<DoctorRecommend />} />
@@ -77,8 +79,15 @@ export default function AppRouter() {
         <Route path="tracker"    element={<TrackerPage />} />
       </Route>
 
-      {/* ── Doctor ── */}
-      <Route path="/doctor" element={<DoctorLayout />}>
+      {/* ── Doctor (protected) ── */}
+      <Route
+        path="/doctor"
+        element={
+          <ProtectedRoute role="doctor">
+            <DoctorLayout />
+          </ProtectedRoute>
+        }
+      >
         <Route index element={<Navigate to="/doctor/dashboard" replace />} />
         <Route path="dashboard"   element={<DoctorDashboard />} />
         <Route path="patients"    element={<PatientsList />} />

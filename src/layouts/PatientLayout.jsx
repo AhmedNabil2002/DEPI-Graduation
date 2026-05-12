@@ -1,6 +1,7 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { HiHome, HiUser, HiChatAlt2, HiBell } from 'react-icons/hi';
 import { HiOutlineLocationMarker } from 'react-icons/hi';
+import { useAuth } from '../context/AuthContext';
 
 const NAV_ITEMS = [
   { path: '/patient/home',     icon: HiHome,     label: 'Home'     },
@@ -12,7 +13,17 @@ const NAV_ITEMS = [
 export default function PatientLayout() {
   const navigate  = useNavigate();
   const location  = useLocation();
+  const { user, logout } = useAuth();
   const isTracker = location.pathname.includes('/tracker');
+
+  const initials = user?.name
+    ? user.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+    : 'P';
+
+  function handleLogout() {
+    logout();
+    navigate('/', { replace: true });
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column' }}>
@@ -32,7 +43,7 @@ export default function PatientLayout() {
               <HiBell size={22} color="var(--gray-500)" />
               <span style={{ position:'absolute', top:-2, right:-2, width:8, height:8, background:'var(--danger)', borderRadius:'50%' }}/>
             </button>
-            <div style={{ width:34, height:34, borderRadius:'50%', background:'var(--primary-light)', color:'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13 }}>P</div>
+            <div onClick={handleLogout} title="Logout" style={{ width:34, height:34, borderRadius:'50%', background:'var(--primary-light)', color:'var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13, cursor:'pointer' }}>{initials}</div>
           </div>
         </header>
       )}

@@ -16,7 +16,7 @@ export default function AuthSelect() {
       desc:  'Find certified therapists, book sessions, and track your recovery — all from home.',
       color: 'var(--primary)',
       bg:    'var(--primary-light)',
-      path:  '/patient/chat',
+      path:  '/auth/login?role=patient',
       steps: ['AI Pain Assessment', 'Doctor Recommendation', 'Book & Track Progress'],
     },
     {
@@ -26,7 +26,7 @@ export default function AuthSelect() {
       desc:  'Manage your patients, monitor their progress, and deliver care remotely.',
       color: '#10b981',
       bg:    '#ecfdf5',
-      path:  '/doctor/dashboard',
+      path:  '/auth/login?role=doctor',
       steps: ['Manage Patients', 'Assign Exercises', 'Track & Analyze'],
     },
   ];
@@ -90,7 +90,8 @@ export default function AuthSelect() {
         </div>
 
         <p style={{ textAlign:'center', fontSize:13, color:'var(--gray-400)', marginTop:28 }}>
-          Already have an account? <span style={{ color:'var(--primary)', cursor:'pointer', fontWeight:600 }}>Sign in</span>
+          Already have an account?{' '}
+          <span onClick={() => navigate('/auth/login')} style={{ color:'var(--primary)', cursor:'pointer', fontWeight:600 }}>Sign in</span>
         </p>
       </div>
     </div>
